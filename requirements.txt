@@ -1,0 +1,4 @@
+fastapi
+imageio-ffmpeg
+uvicorn
+yt-dlp[default,curl-cffi]

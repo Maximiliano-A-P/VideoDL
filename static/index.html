@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VideoDL</title>
+<style>
+  :root {
+    --bg: #e9edf0; --surface: #ffffff; --ink: #14202b; --mute: #667684;
+    --line: #cfd8de; --accent: #0f6b62; --accent-ink: #ffffff; --danger: #b3261e; --track: #dde4e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11181e; --surface: #1a242c; --ink: #e8eef2; --mute: #8fa1ae;
+      --line: #2c3a45; --accent: #4cc2b3; --accent-ink: #06201c; --danger: #ff8a80; --track: #2c3a45;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
+  h1 { margin: 0; font-size: 2rem; font-weight: 600; letter-spacing: -0.02em; }
+  .status { font-size: .875rem; color: var(--mute); }
+  .status.ok { color: var(--accent); }
+  .warn { margin: 0 0 16px; padding: 10px 14px; border-left: 3px solid var(--danger); background: var(--surface); font-size: .9rem; }
+  .row { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0; padding: 14px 16px; font: inherit; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  }
+  button {
+    font: inherit; font-weight: 600; padding: 0 22px; border-radius: 6px; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); border: 0; min-height: 48px;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); min-height: 36px; padding: 0 14px; font-weight: 500; font-size: .9rem; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .dest { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .dest button { flex: none; }
+  .dir { font-size: .875rem; color: var(--mute); overflow-wrap: anywhere; }
+  .error { color: var(--danger); margin: 12px 0 0; min-height: 1.5em; }
+  .card { margin-top: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .head { display: flex; gap: 16px; padding: 16px; }
+  .head img { width: 160px; aspect-ratio: 16/9; object-fit: cover; border-radius: 4px; background: var(--track); flex: none; }
+  .head h2 { margin: 0 0 4px; font-size: 1.05rem; line-height: 1.3; overflow-wrap: anywhere; }
+  .meta { margin: 0; color: var(--mute); font-size: .875rem; }
+  .opts { padding: 16px; border-top: 1px solid var(--line); display: grid; gap: 14px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg label { position: relative; }
+  .seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .seg span { display: block; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; font-size: .9rem; }
+  .seg input:checked + span { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .group-label { font-size: .85rem; color: var(--mute); margin-bottom: 6px; }
+  .go { display: flex; justify-content: flex-end; }
+  h3 { margin: 36px 0 8px; font-size: 1rem; font-weight: 600; }
+  .job { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .job-top { display: flex; justify-content: space-between; gap: 12px; }
+  .job-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-state { color: var(--mute); font-size: .875rem; white-space: nowrap; }
+  .job.done .job-state { color: var(--accent); }
+  .job.error .job-state { color: var(--danger); }
+  .bar { height: 4px; background: var(--track); margin-top: 8px; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .empty { color: var(--mute); margin: 8px 0; }
+  [hidden] { display: none !important; }
+  @media (max-width: 520px) { .head { flex-direction: column; } .head img { width: 100%; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>VideoDL</h1>
+    <span id="status" class="status">Iniciando…</span>
+  </header>
+
+  <p id="warn" class="warn" hidden></p>
+
+  <div class="row">
+    <input id="url" type="text" placeholder="Pegá el link del video" autocomplete="off" spellcheck="false" disabled>
+    <button id="analyze" disabled>Analizar</button>
+  </div>
+
+  <div class="dest">
+    <button id="pick" class="ghost" disabled>Cambiar carpeta</button>
+    <span class="dir">Se guarda en: <span id="dir">…</span></span>
+  </div>
+
+  <p id="error" class="error" role="alert"></p>
+
+  <section id="card" class="card" hidden>
+    <div class="head">
+      <img id="thumb" alt="">
+      <div>
+        <h2 id="title"></h2>
+        <p id="meta" class="meta"></p>
+      </div>
+    </div>
+    <div class="opts">
+      <div>
+        <div class="group-label">Qué querés descargar</div>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="video" checked><span>Video</span></label>
+          <label><input type="radio" name="mode" value="audio"><span>Solo audio</span></label>
+        </div>
+      </div>
+      <div id="videoOpts">
+        <div class="group-label">Calidad (los tamaños son aproximados)</div>
+        <div id="heights" class="seg"></div>
+      </div>
+      <div id="audioOpts" hidden>
+        <div class="group-label">Formato de audio</div>
+        <div class="seg">
+          <label><input type="radio" name="afmt" value="mp3" checked><span>MP3</span></label>
+          <label><input type="radio" name="afmt" value="m4a"><span>M4A</span></label>
+          <label><input type="radio" name="afmt" value="opus"><span>Opus</span></label>
+          <label><input type="radio" name="afmt" value="wav"><span>WAV</span></label>
+        </div>
+        <p id="audioSize" class="meta" hidden></p>
+      </div>
+      <div class="go"><button id="download">Descargar</button></div>
+    </div>
+  </section>
+
+  <h3>Descargas</h3>
+  <div id="jobs"><p id="empty" class="empty">Todavía no descargaste nada.</p></div>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let ready = false;
+let analyzing = false;
+let starting = false;
+let picking = false;
+let current = null; // { url, info } del último análisis
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type": "application/json", "X-Token": TOKEN },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : (d && d.message) || "Ocurrió un error.");
+  }
+  return data;
+}
+
+function showError(msg) { $("error").textContent = msg || ""; }
+
+function fmtDuration(s) {
+  if (!s) return "";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  const pad = (n) => String(n).padStart(2, "0");
+  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
+function fmtSize(b) {
+  if (!b) return "";
+  const mb = b / 1048576;
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + " GB";
+  return (mb >= 10 ? Math.round(mb) : mb.toFixed(1)) + " MB";
+}
+
+function radio(name, value, label, checked) {
+  const l = document.createElement("label");
+  const i = document.createElement("input");
+  i.type = "radio"; i.name = name; i.value = value; i.checked = !!checked;
+  const s = document.createElement("span");
+  s.textContent = label;
+  l.append(i, s);
+  return l;
+}
+
+function selected(name) {
+  const el = document.querySelector(`input[name="${name}"]:checked`);
+  return el ? el.value : null;
+}
+
+/* ---- Inicio: esperar a que el backend termine de arrancar ---- */
+async function waitReady() {
+  while (!ready) {
+    try {
+      const h = await (await fetch("/health")).json();
+      if (h.ready) {
+        await loadConfig();
+        ready = true;
+        $("status").textContent = "Listo";
+        $("status").classList.add("ok");
+        $("url").disabled = false;
+        $("analyze").disabled = false;
+        $("pick").disabled = false;
+        if (!h.ffmpeg) {
+          $("warn").hidden = false;
+          $("warn").textContent = "No se encontró ffmpeg. Sin él no se puede extraer audio y el video se baja en un solo archivo (calidad limitada).";
+        }
+        break;
+      }
+    } catch (_) { /* el servidor todavía no responde */ }
+    await sleep(600);
+  }
+  pollJobs();
+}
+
+/* ---- Carpeta de descargas ---- */
+function setDir(d) {
+  $("dir").textContent = d;
+  $("dir").title = d;
+}
+
+async function loadConfig() {
+  const c = await api("/config");
+  setDir(c.download_dir);
+}
+
+async function pickFolder() {
+  if (!ready || picking) return;
+  picking = true;
+  $("pick").disabled = true;
+  $("pick").textContent = "Elegí en la ventana…";
+  showError("");
+  try {
+    const c = await api("/config/folder", {});
+    setDir(c.download_dir);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    picking = false;
+    $("pick").disabled = false;
+    $("pick").textContent = "Cambiar carpeta";
+  }
+}
+
+/* ---- Analizar ---- */
+async function analyze() {
+  if (!ready || analyzing) return;
+  const url = $("url").value.trim();
+  if (!url) { showError("Pegá un link primero."); return; }
+  analyzing = true;
+  $("analyze").disabled = true;
+  $("analyze").textContent = "Analizando…";
+  showError("");
+  try {
+    const info = await api("/info", { url });
+    current = { url, info };
+    renderInfo(info);
+  } catch (e) {
+    $("card").hidden = true;
+    current = null;
+    showError(e.message);
+  } finally {
+    analyzing = false;
+    $("analyze").disabled = false;
+    $("analyze").textContent = "Analizar";
+  }
+}
+
+function sizeLabel(text, size) {
+  return size ? `${text} · ~${fmtSize(size)}` : text;
+}
+
+function renderInfo(info) {
+  $("title").textContent = info.title;
+  $("meta").textContent = [info.uploader, fmtDuration(info.duration)].filter(Boolean).join(" · ");
+  const img = $("thumb");
+  img.hidden = !info.thumbnail;
+  if (info.thumbnail) img.src = info.thumbnail;
+
+    const box = $("heights");
+    box.replaceChildren(...info.options.map((o, i) =>
+      radio("height", String(o.height), sizeLabel(o.height + "p", o.size), i === 0)));
+
+  const as = $("audioSize");
+  as.hidden = !info.audio_size;
+  as.textContent = info.audio_size ? `Audio original: ~${fmtSize(info.audio_size)}. El tamaño final cambia según el formato.` : "";
+
+  document.querySelector('input[name="mode"][value="video"]').checked = true;
+  toggleMode();
+  $("card").hidden = false;
+}
+
+function toggleMode() {
+  const audio = selected("mode") === "audio";
+  $("videoOpts").hidden = audio;
+  $("audioOpts").hidden = !audio;
+}
+
+/* ---- Descargar ---- */
+async function startDownload() {
+  if (!current || starting) return;
+  starting = true;
+  $("download").disabled = true;
+  showError("");
+  try {
+    const h = selected("height");
+    await api("/download", {
+      url: current.url,
+      mode: selected("mode"),
+      height: h ? parseInt(h, 10) : null,
+      audio_format: selected("afmt"),
+    });
+    await refreshJobs();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    starting = false;
+    $("download").disabled = false;
+  }
+}
+
+/* ---- Lista de descargas (cada job tiene su propio elemento) ---- */
+const jobEls = new Map();
+
+function jobState(j) {
+  if (j.status === "done") return "Listo";
+  if (j.status === "error") return "Error";
+  if (j.status === "processing") return "Procesando…";
+  if (j.status === "queued") return "En cola";
+  const pct = j.progress != null ? Math.round(j.progress) + "%" : "";
+  const mb = j.speed ? (j.speed / 1048576).toFixed(1) + " MB/s" : "";
+  return [pct, mb].filter(Boolean).join(" · ") || "Descargando…";
+}
+
+function renderJob(j) {
+  let el = jobEls.get(j.id);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "job";
+    el.innerHTML = '<div class="job-top"><span class="job-title"></span><span class="job-state"></span></div><div class="bar"><i></i></div><div class="meta job-note"></div>';
+    $("jobs").prepend(el);
+    jobEls.set(j.id, el);
+    $("empty").hidden = true;
+  }
+  el.classList.toggle("done", j.status === "done");
+  el.classList.toggle("error", j.status === "error");
+  el.querySelector(".job-title").textContent = (j.mode === "audio" ? "♪ " : "") + j.title;
+  el.querySelector(".job-state").textContent = jobState(j);
+  el.querySelector(".bar i").style.width = (j.progress || 0) + "%";
+  const note = el.querySelector(".job-note");
+  note.textContent = j.status === "error" ? j.error : (j.file || "");
+  note.title = j.dir || "";
+}
+
+async function refreshJobs() {
+  const list = await api("/jobs");
+  list.slice().reverse().forEach(renderJob);
+}
+
+async function pollJobs() {
+  while (true) {
+    try { await refreshJobs(); } catch (_) { /* reintenta en el próximo ciclo */ }
+    await sleep(1000);
+  }
+}
+
+/* ---- Eventos ---- */
+$("analyze").addEventListener("click", analyze);
+$("url").addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
+$("download").addEventListener("click", startDownload);
+$("pick").addEventListener("click", pickFolder);
+document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", toggleMode));
+
+waitReady();
+</script>
+</body>
+</html>
